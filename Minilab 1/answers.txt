@@ -1,0 +1,63 @@
+Name:
+UCLA ID:
+804119360
+
+Collaborators:
+Deepak Ananth Rama
+
+-------------------------------------------------------------------------------
+
+Exercise 1. Answer the following question: Say you replaced run(current) in the INT_SYS_GETPID clause with schedule(). The process that called sys_getpid() will eventually run again, picking up its execution as if sys_getpid() had returned directly. When it does run, will the sys_getpid() call have returned the correct value?
+
+	YES.
+	Reason: The %eax register which holds the return value is loaded with he correct pid (process ID). But when schedule is called, during the context switch, the register values are stored onto the process descripter. Another process gets control, which may overwrite the %eax value. But when the original process does run again, the regiater values will be restored from the process descriptor into the respective regisyters. Hence the original return value - pid in the %eax register will returned - which is the correct value. Across context switches, the PID is the same.
+
+-------------------------------------------------------------------------------
+
+Exercise 2. Fill out the do_fork() and copy_stack() functions in mpos-kern.c.
+	DONE.
+	do_fork(): lines 256-286 in mpos-kern.c
+		Step 1 - get an process descriptor other than [0], return -1 on failure
+		Step 2 - copy entire process descriptor to child using memcopy
+		Step 3 - set values of child's pid and status
+		Step 4 - copy stack from parent using copy_stack() call
+		Step 5 - registers copied in step 2, change value of %eax and %esp manually
+		Step 6 - return child's pid
+	copy_stack(): lines 345-354 in mpos-kern.c
+		Step 1 - get src_stack_top from formula in MINIPROCOS MEMORY MAP line24 
+		Step 1 - get dst_stack_top from formula in MINIPROCOS MEMORY MAP line24 
+		Step 2 - get current stack size of src
+		Step 3 - get dst_stack_bottom from dst_stack_top and current stack size of src
+		Step 4 - copy stack contents using memcopy
+
+-------------------------------------------------------------------------------
+
+Exercise 3. Change the implementation of INT_SYS_WAIT in mpos-kern.c to use blocking instead of polling. In particular, when the caller tries to wait on a process that has not yet exited, that process should block until the process actually exits.
+	DONE.
+	interrupt(), case INT_SYS_WAIT: lines 201-204 in mpos-kern.c
+		Step 1 - add caller's pid into waitq of callee 
+		Step 2 - set status of caller to blocked
+	interrupt(), case INT_SYS_EXIT: lines 174-179 in mpos-kern.c
+		Step 1 - set status of process in waitq of self to runnable 
+		Step 2 - set %eax register of process in waitq to the self's exit status
+	struct process: lines 26-28 in mpos-kern.h
+		Step 1 - variable waitq of type pid_t to hold pid of waiting (blocked) process
+	start(): lines 33-35 in mpos-app.c
+		Step 1 - added print "W" in wait loop
+
+-------------------------------------------------------------------------------
+
+Exercise 4. Find and fix this bug.
+	DONE.
+	interrupt(), case INT_SYS_EXIT: lines 179 in mpos-kern.c
+		Step 1 - set status of self process to empty to indicate termination
+
+-------------------------------------------------------------------------------
+
+Anything else you'd like us to know:
+
+	NONE.
+
+-------------------------------------------------------------------------------
+
+Extra credit exercises:

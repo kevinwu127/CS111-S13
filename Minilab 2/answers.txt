@@ -1,0 +1,98 @@
+Name: Deepak Ananth Rama (deepakar@cs.ucla.edu)
+UCLA ID: 804119360
+
+Collaborators:
+
+-------------------------------------------------------------------------------
+
+Response to Exercise 1:
+DONE: (submitted on 5/29)
+The name of the scheduling algorithm is: Round Robin scheduling algorithm, starting with the first process and with timeslot 1
+
+-------------------------------------------------------------------------------
+
+(Exercise 2 is a coding exercise)
+DONE: (submitted on 5/29)
+	1) schedos-kern.c - (test the algorithm) 
+			    (start the process runs with higher priority)
+			    (priority scheduling)
+	2) schedos-1.c - (added system call sys_exit())
+	Logic: During each schedule() call, the kernel starts with the highest priority RUNNABLE process and allots it a slot.
+
+-------------------------------------------------------------------------------
+
+Response to Exercise 3:
+DONE: (submitted on 5/29)
+Average turnaround time for scheduling_algorithm 0:	1278.5 milliseconds
+Average turnaround time for scheduling_algorithm 1:	800 milliseconds
+
+Average wait time for scheduling_algorithm 0:	958.5 milliseconds
+Average wait time for scheduling_algorithm 1:	480 milliseconds
+
+-------------------------------------------------------------------------------
+
+Exercise 4:
+
+Did you complete Exercise 4A, Exercise 4B, or both for extra credit? BOTH
+4A: DONE: (submitted on 5/29)
+	1) schedos-kern.h - (p_priority and lastrun fields to process descriptor)
+	2) schedos-app.h - (function to call machine code to handle interrupt INT_SYS_USER1)
+	3) schedos-kern.c - (test the algorithm) 
+		  	    (interrupt handler for INT_SYS_USER1) 
+			    (clear p_priority and lastrun)
+			    (start the process runs)
+			    (self set priority scheduling)
+	4) schedos-1.c - (added system call sys_set_selfpriority())
+	Logic: Process performs a system call in the beginning of start() to set its priority to a randomly chosen value between 0 and NPROCS. During each schedule() call, the kernel starts with identifying the first highest priority RUNNABLE process. Next circularly loop through the rest of the processes to check if another process exists with the same priority, and with lastrun flag set. If found, then clear that lastrun flag and again circularly loop starting from that process and choose the next process with the same priority.
+	NOTE: To change the random priorities generated, you may carefully modily the RANDSEED values defined in each of the process files. For the current values, though 3 has least priority, it gets executed once as 
+
+4B: DONE: (submitted on 5/29)
+	1) schedos-kern.h - (p_share & p_sharedone fields to process descriptor)
+	2) schedos-app.h - (function to call machine code to handle interrupt INT_SYS_USER2)
+	3) schedos-kern.c - (test the algorithm) 
+			    (interrupt handler for INT_SYS_USER2) 
+			    (clear p_share & p_sharedone)
+			    (start the process runs)
+			    (proportional scheduling)
+	4) schedos-1.c - (added system call sys_set_selfshare())
+	Logic: Process performs a system call in the beginning of start() to set its share to be equal to its pid. During each schedule() call, the kernel checks if the current process still has its share left in that cycle. If yes, it is run again after incrementing the shares done. If not or if the current process is not RUNNABLE, the next RUNNABLE process is identified and run.
+
+-------------------------------------------------------------------------------
+
+Exerlcise 5:
+DONE: (submitted on 5/29, modified on 5/31)
+
+NOTE: Fos this excercise I refered to the run output seen before implementing Excecise 4A/B, after whih due to additional system calls the output displayed would be expected to differ. However the logical explaination remains the same.
+
+Response: The first known timer interrupt occurs during the execution of process 3, specifically after 16 full cycles of all the 4 processes. Since the Fequency is 100, the interval between the clock interrupts is 10 ms, with the timeslot assigned to each process being 1 ms. In reality scheduling, context swith etc also take time. For a process to not display the output, the interrupt should occur just after the *cursorpos is assigned its PRINTCHAR value of 3 and before cursorpos is incremented. Since the clock interrupt effectively calls the schedule, since in round robin the next process (here process 4) is run and this again assigns the new PRINTCHAR value of 4 to *cursorpos, thus overwriting the old value of 3, and then increments cursorpos to the next position, Subsequent call to processes will succeed as well, until the next interrupt occurs such thatictim  it once again happens between the *cursorpos assignment and cursorpos increment. Thus the race condition is about which PRINTCHAR value will be help in the *cursorpos - the old process that was interrupted is the victi which does not display its character. However, note that the increment happens later over its next slot but without the display - and as per the for loop, counter i is incremented and the process assumes that it is printed on the screen. Thus we end up with few characters skipped. As the frequency increases more such untimely interrupts result in more characters skipped.
+
+-------------------------------------------------------------------------------
+
+(Exercise 6 is a coding exercise)
+6: DONE: (submitted on 5/31)
+	1) schedos.h - (interrupt INT_SYS_USER3 with number 52)
+	2) schedos-app.h - (function to call machine code to handle interrupt INT_SYS_USER3)
+	3) schedos-kern.c - (test the algorithm) 
+			    (interrupt handler for INT_SYS_USER3) 
+	4) schedos-1.c - (added system call sys_write_char())
+	Logic: New system call is passed the character to be printed. The system call involkes the interrupt handler, which prints the character and calls the schedule() function. Race condition is avoided as both the *cursorpos assignment and cursorpos increment are done by the kernel which cannot be interrupted. 
+
+-------------------------------------------------------------------------------
+Anything else you'd like us to know:
+
+-------------------------------------------------------------------------------
+Extra credit exercises:
+
+Exerlcise 7:
+
+Lottery Scheduling: DONE: (submitted on 5/29)
+scheduling_algorithm = 4
+	1) schedos-kern.c - (test the algorithm) 
+			    (defining lottery size, lottery array, lottery assigner, random winner generator) 
+			    (assign lottery tickets to processes equally)
+			    (lottery scheduling)
+	Logic: An array of pids of size atleast runcount*nprocs (here atleast 320*5) will ensure that there are enough lottery tickets for all processes. If lesser, the algorithm works, but would not be the most accurate in terms of randomness. First assign the lottery tickets to each of the processes equally. During assignment the array element in the lottery array is set to the concerns process id. We start off by running the first process and during each schedule() call, the lottery scheduling takes place. Use the random function lottery_random() to select a winning ticket randomly. If the pid if that array location is RUNNABLE, run that process.
+
+-------------------------------------------------------------------------------
+
+Exerlcise 8:

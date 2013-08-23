@@ -1,0 +1,365 @@
+diff -ru --exclude='*.[do]' qemu-0.11.1/block/qcow2-cluster.c qemu-0.11.1-p/block/qcow2-cluster.c
+--- qemu-0.11.1/block/qcow2-cluster.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/block/qcow2-cluster.c	2011-01-26 17:05:45.000000000 -0800
+@@ -51,25 +51,28 @@
+     memcpy(new_l1_table, s->l1_table, s->l1_size * sizeof(uint64_t));
+ 
+     /* write new table (align to cluster) */
+-    new_l1_table_offset = qcow2_alloc_clusters(bs, new_l1_size2);
++    if (!bs->read_only) {
++	new_l1_table_offset = qcow2_alloc_clusters(bs, new_l1_size2);
++
++	for(i = 0; i < s->l1_size; i++)
++	    new_l1_table[i] = cpu_to_be64(new_l1_table[i]);
++	ret = bdrv_pwrite(s->hd, new_l1_table_offset, new_l1_table, new_l1_size2);
++	if (ret != new_l1_size2)
++	    goto fail;
++	for(i = 0; i < s->l1_size; i++)
++	    new_l1_table[i] = be64_to_cpu(new_l1_table[i]);
++
++	/* set new table */
++	cpu_to_be32w((uint32_t*)data, new_l1_size);
++	cpu_to_be64w((uint64_t*)(data + 4), new_l1_table_offset);
++	if (bdrv_pwrite(s->hd, offsetof(QCowHeader, l1_size), data,
++			sizeof(data)) != sizeof(data))
++	    goto fail;
++	qcow2_free_clusters(bs, s->l1_table_offset, s->l1_size * sizeof(uint64_t));
++	s->l1_table_offset = new_l1_table_offset;
++    }
+ 
+-    for(i = 0; i < s->l1_size; i++)
+-        new_l1_table[i] = cpu_to_be64(new_l1_table[i]);
+-    ret = bdrv_pwrite(s->hd, new_l1_table_offset, new_l1_table, new_l1_size2);
+-    if (ret != new_l1_size2)
+-        goto fail;
+-    for(i = 0; i < s->l1_size; i++)
+-        new_l1_table[i] = be64_to_cpu(new_l1_table[i]);
+-
+-    /* set new table */
+-    cpu_to_be32w((uint32_t*)data, new_l1_size);
+-    cpu_to_be64w((uint64_t*)(data + 4), new_l1_table_offset);
+-    if (bdrv_pwrite(s->hd, offsetof(QCowHeader, l1_size), data,
+-                sizeof(data)) != sizeof(data))
+-        goto fail;
+     qemu_free(s->l1_table);
+-    qcow2_free_clusters(bs, s->l1_table_offset, s->l1_size * sizeof(uint64_t));
+-    s->l1_table_offset = new_l1_table_offset;
+     s->l1_table = new_l1_table;
+     s->l1_size = new_l1_size;
+     return 0;
+@@ -221,7 +224,8 @@
+     /* update the L1 entry */
+ 
+     s->l1_table[l1_index] = l2_offset | QCOW_OFLAG_COPIED;
+-    if (write_l1_entry(s, l1_index) < 0) {
++    if (!bs->read_only &&
++	write_l1_entry(s, l1_index) < 0) {
+         return NULL;
+     }
+ 
+@@ -241,7 +245,8 @@
+             return NULL;
+     }
+     /* write the l2 table to the file */
+-    if (bdrv_pwrite(s->hd, l2_offset,
++    if (!bs->read_only &&
++	bdrv_pwrite(s->hd, l2_offset,
+                     l2_table, s->l2_size * sizeof(uint64_t)) !=
+         s->l2_size * sizeof(uint64_t))
+         return NULL;
+@@ -569,7 +574,8 @@
+     /* compressed clusters never have the copied flag */
+ 
+     l2_table[l2_index] = cpu_to_be64(cluster_offset);
+-    if (bdrv_pwrite(s->hd,
++    if (!bs->read_only &&
++	bdrv_pwrite(s->hd,
+                     l2_offset + l2_index * sizeof(uint64_t),
+                     l2_table + l2_index,
+                     sizeof(uint64_t)) != sizeof(uint64_t))
+@@ -647,7 +653,8 @@
+                     (i << s->cluster_bits)) | QCOW_OFLAG_COPIED);
+      }
+ 
+-    if (write_l2_entries(s, l2_table, l2_offset, l2_index, m->nb_clusters) < 0) {
++    if (!bs->read_only
++	&& write_l2_entries(s, l2_table, l2_offset, l2_index, m->nb_clusters) < 0) {
+         ret = -1;
+         goto err;
+     }
+diff -ru --exclude='*.[do]' qemu-0.11.1/block/qcow2-refcount.c qemu-0.11.1-p/block/qcow2-refcount.c
+--- qemu-0.11.1/block/qcow2-refcount.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/block/qcow2-refcount.c	2011-01-26 17:06:54.000000000 -0800
+@@ -196,6 +196,9 @@
+     uint64_t data64;
+     int cache = cache_refcount_updates;
+ 
++    if (bs->read_only)
++	return 2;
++
+     /* Find L1 index and grow refcount table if needed */
+     refcount_table_index = cluster_index >> (s->cluster_bits - REFCOUNT_SHIFT);
+     if (refcount_table_index >= s->refcount_table_size) {
+@@ -295,7 +298,8 @@
+         table_index = cluster_index >> (s->cluster_bits - REFCOUNT_SHIFT);
+         if ((old_table_index >= 0) && (table_index != old_table_index)) {
+ 
+-            if (write_refcount_block_entries(s, refcount_block_offset,
++            if (!bs->read_only &&
++		write_refcount_block_entries(s, refcount_block_offset,
+                 first_index, last_index) < 0)
+             {
+                 return -EIO;
+@@ -567,7 +571,7 @@
+                     }
+                 }
+             }
+-            if (l2_modified) {
++            if (l2_modified && !bs->read_only) {
+                 if (bdrv_pwrite(s->hd,
+                                 l2_offset, l2_table, l2_size) != l2_size)
+                     goto fail;
+@@ -587,7 +591,7 @@
+             }
+         }
+     }
+-    if (l1_modified) {
++    if (l1_modified && !bs->read_only) {
+         for(i = 0; i < l1_size; i++)
+             cpu_to_be64s(&l1_table[i]);
+         if (bdrv_pwrite(s->hd, l1_table_offset, l1_table,
+diff -ru --exclude='*.[do]' qemu-0.11.1/block/qcow2-snapshot.c qemu-0.11.1-p/block/qcow2-snapshot.c
+--- qemu-0.11.1/block/qcow2-snapshot.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/block/qcow2-snapshot.c	2011-01-26 17:07:05.000000000 -0800
+@@ -309,7 +309,8 @@
+         return -ENOENT;
+     sn = &s->snapshots[snapshot_index];
+ 
+-    if (qcow2_update_snapshot_refcount(bs, s->l1_table_offset, s->l1_size, -1) < 0)
++    if (!bs->read_only &&
++	qcow2_update_snapshot_refcount(bs, s->l1_table_offset, s->l1_size, -1) < 0)
+         goto fail;
+ 
+     if (qcow2_grow_l1_table(bs, sn->l1_size) < 0)
+@@ -321,14 +322,17 @@
+     if (bdrv_pread(s->hd, sn->l1_table_offset,
+                    s->l1_table, l1_size2) != l1_size2)
+         goto fail;
+-    if (bdrv_pwrite(s->hd, s->l1_table_offset,
++    if (bs->read_only)
++	s->l1_table_offset = sn->l1_table_offset;
++    else if (bdrv_pwrite(s->hd, s->l1_table_offset,
+                     s->l1_table, l1_size2) != l1_size2)
+         goto fail;
+     for(i = 0;i < s->l1_size; i++) {
+         be64_to_cpus(&s->l1_table[i]);
+     }
+ 
+-    if (qcow2_update_snapshot_refcount(bs, s->l1_table_offset, s->l1_size, 1) < 0)
++    if (!bs->read_only &&
++	qcow2_update_snapshot_refcount(bs, s->l1_table_offset, s->l1_size, 1) < 0)
+         goto fail;
+ 
+ #ifdef DEBUG_ALLOC
+@@ -345,6 +349,9 @@
+     QCowSnapshot *sn;
+     int snapshot_index, ret;
+ 
++    if (bs->read_only)
++	return -EACCES;
++
+     snapshot_index = find_snapshot_by_id_or_name(bs, snapshot_id);
+     if (snapshot_index < 0)
+         return -ENOENT;
+diff -ru --exclude='*.[do]' qemu-0.11.1/block.c qemu-0.11.1-p/block.c
+--- qemu-0.11.1/block.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/block.c	2011-01-26 16:50:19.000000000 -0800
+@@ -912,6 +912,11 @@
+     return bs->read_only;
+ }
+ 
++int bdrv_is_can_snapshot_goto(BlockDriverState *bs)
++{
++    return bs->drv && bs->drv->bdrv_snapshot_goto;
++}
++
+ int bdrv_is_sg(BlockDriverState *bs)
+ {
+     return bs->sg;
+diff -ru --exclude='*.[do]' qemu-0.11.1/block.h qemu-0.11.1-p/block.h
+--- qemu-0.11.1/block.h	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/block.h	2011-01-26 16:49:55.000000000 -0800
+@@ -118,6 +118,7 @@
+ int bdrv_get_translation_hint(BlockDriverState *bs);
+ int bdrv_is_removable(BlockDriverState *bs);
+ int bdrv_is_read_only(BlockDriverState *bs);
++int bdrv_is_can_snapshot_goto(BlockDriverState *bs);
+ int bdrv_is_sg(BlockDriverState *bs);
+ int bdrv_is_inserted(BlockDriverState *bs);
+ int bdrv_media_changed(BlockDriverState *bs);
+diff -ru --exclude='*.[do]' qemu-0.11.1/qemu-options.hx qemu-0.11.1-p/qemu-options.hx
+--- qemu-0.11.1/qemu-options.hx	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/qemu-options.hx	2011-01-26 21:17:48.000000000 -0800
+@@ -459,6 +459,16 @@
+ ETEXI
+ 
+ #ifdef CONFIG_SDL
++DEF("no-grab", 0, QEMU_OPTION_no_grab,
++    "-no-grab        disable mouse grabbing\n")
++#endif
++STEXI
++@item -no-grab
++
++Disable mouse grabbing.
++ETEXI
++
++#ifdef CONFIG_SDL
+ DEF("no-quit", 0, QEMU_OPTION_no_quit,
+     "-no-quit        disable SDL window close capability\n")
+ #endif
+diff -ru --exclude='*.[do]' qemu-0.11.1/savevm.c qemu-0.11.1-p/savevm.c
+--- qemu-0.11.1/savevm.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/savevm.c	2011-01-26 18:11:07.000000000 -0800
+@@ -1005,19 +1005,21 @@
+ {
+     return (bs &&
+             !bdrv_is_removable(bs) &&
+-            !bdrv_is_read_only(bs));
++            bdrv_is_can_snapshot_goto(bs));
+ }
+ 
+-static BlockDriverState *get_bs_snapshots(void)
++static BlockDriverState *get_bs_snapshots(int savevm)
+ {
+     BlockDriverState *bs;
+     int i;
++    int (*checkfunc)(BlockDriverState *) =
++	(savevm ? bdrv_can_snapshot : bdrv_has_snapshot);
+ 
+-    if (bs_snapshots)
++    if (bs_snapshots && checkfunc(bs_snapshots))
+         return bs_snapshots;
+     for(i = 0; i <= nb_drives; i++) {
+         bs = drives_table[i].bdrv;
+-        if (bdrv_can_snapshot(bs))
++        if (checkfunc(bs))
+             goto ok;
+     }
+     return NULL;
+@@ -1062,7 +1064,7 @@
+     struct timeval tv;
+ #endif
+ 
+-    bs = get_bs_snapshots();
++    bs = get_bs_snapshots(1);
+     if (!bs) {
+         monitor_printf(mon, "No block device can accept snapshots\n");
+         return;
+@@ -1152,7 +1154,7 @@
+     int i, ret;
+     int saved_vm_running;
+ 
+-    bs = get_bs_snapshots();
++    bs = get_bs_snapshots(0);
+     if (!bs) {
+         monitor_printf(mon, "No block device supports snapshots\n");
+         return;
+@@ -1220,7 +1222,7 @@
+     BlockDriverState *bs, *bs1;
+     int i, ret;
+ 
+-    bs = get_bs_snapshots();
++    bs = get_bs_snapshots(1);
+     if (!bs) {
+         monitor_printf(mon, "No block device supports snapshots\n");
+         return;
+@@ -1250,7 +1252,7 @@
+     int nb_sns, i;
+     char buf[256];
+ 
+-    bs = get_bs_snapshots();
++    bs = get_bs_snapshots(0);
+     if (!bs) {
+         monitor_printf(mon, "No available block device supports snapshots\n");
+         return;
+diff -ru --exclude='*.[do]' qemu-0.11.1/sdl.c qemu-0.11.1-p/sdl.c
+--- qemu-0.11.1/sdl.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/sdl.c	2011-01-26 21:25:09.000000000 -0800
+@@ -464,7 +464,7 @@
+     } else
+         sdl_hide_cursor();
+ 
+-    if (SDL_WM_GrabInput(SDL_GRAB_ON) == SDL_GRAB_ON) {
++    if (!no_grab && SDL_WM_GrabInput(SDL_GRAB_ON) == SDL_GRAB_ON) {
+         gui_grab = 1;
+         sdl_update_caption();
+     } else
+diff -ru --exclude='*.[do]' qemu-0.11.1/sysemu.h qemu-0.11.1-p/sysemu.h
+--- qemu-0.11.1/sysemu.h	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/sysemu.h	2011-01-26 21:19:11.000000000 -0800
+@@ -123,6 +123,7 @@
+ extern int win2k_install_hack;
+ extern int rtc_td_hack;
+ extern int alt_grab;
++extern int no_grab;
+ extern int usb_enabled;
+ extern int virtio_balloon;
+ extern const char *virtio_balloon_devaddr;
+diff -ru --exclude='*.[do]' qemu-0.11.1/target-i386/helper.c qemu-0.11.1-p/target-i386/helper.c
+--- qemu-0.11.1/target-i386/helper.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/target-i386/helper.c	2011-01-26 16:44:51.000000000 -0800
+@@ -1308,6 +1308,7 @@
+     target_phys_addr_t paddr;
+     uint32_t page_offset;
+     int page_size;
++    addr += env->segs[R_DS].base;
+ 
+     if (env->cr[4] & CR4_PAE_MASK) {
+         target_ulong pdpe_addr;
+diff -ru --exclude='*.[do]' qemu-0.11.1/target-i386/translate.c qemu-0.11.1-p/target-i386/translate.c
+--- qemu-0.11.1/target-i386/translate.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/target-i386/translate.c	2011-01-26 16:45:03.000000000 -0800
+@@ -7689,7 +7689,7 @@
+     for(;;) {
+         if (unlikely(!TAILQ_EMPTY(&env->breakpoints))) {
+             TAILQ_FOREACH(bp, &env->breakpoints, entry) {
+-                if (bp->pc == pc_ptr &&
++                if (bp->pc == pc_ptr - dc->cs_base &&
+                     !((bp->flags & BP_CPU) && (tb->flags & HF_RF_MASK))) {
+                     gen_debug(dc, pc_ptr - dc->cs_base);
+                     break;
+diff -ru --exclude='*.[do]' qemu-0.11.1/vl.c qemu-0.11.1-p/vl.c
+--- qemu-0.11.1/vl.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/vl.c	2011-01-26 21:19:06.000000000 -0800
+@@ -247,6 +247,7 @@
+ #endif
+ const char *qemu_name;
+ int alt_grab = 0;
++int no_grab = 0;
+ #if defined(TARGET_SPARC) || defined(TARGET_PPC)
+ unsigned int nb_prom_envs = 0;
+ const char *prom_envs[MAX_PROM_ENVS];
+@@ -5398,6 +5399,9 @@
+             case QEMU_OPTION_alt_grab:
+                 alt_grab = 1;
+                 break;
++            case QEMU_OPTION_no_grab:
++                no_grab = 1;
++                break;
+             case QEMU_OPTION_no_quit:
+                 no_quit = 1;
+                 break;
+diff -ru --exclude='*.[do]' qemu-0.11.1/vnc.c qemu-0.11.1-p/vnc.c
+--- qemu-0.11.1/vnc.c	2009-12-02 12:27:02.000000000 -0800
++++ qemu-0.11.1-p/vnc.c	2011-01-26 17:13:41.000000000 -0800
+@@ -736,6 +736,10 @@
+         int saved_offset;
+         int has_dirty = 0;
+ 
++	/* On reverse connections, the guest might not be connected yet. */
++	if (!vs->guest.ds)
++	    return;
++
+         if (vs->output.offset && !vs->audio_cap && !vs->force_update) {
+             /* kernel send buffers are full -> drop frames to throttle */
+             qemu_mod_timer(vs->timer, qemu_get_clock(rt_clock) + VNC_REFRESH_INTERVAL);

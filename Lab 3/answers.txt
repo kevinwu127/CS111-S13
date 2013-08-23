@@ -1,0 +1,30 @@
+# Fill in your name, student ID, and email address in this file.
+# If you are working in a team, fill out the information for both team 
+# members.
+
+# SUBMIT THE LAB ONLY ONCE (from only one partner). This file will be
+# automatically parsed in order to give both team members credit for the
+# lab.
+
+# If you did one or more extra credit problems, indicate which one in the
+# appropriate section below (remove the # sign first). If you have any other
+# information you'd like us to know, please add it at the end of the file.
+
+# Partner 1
+Name: Deepak Ananth Rama
+Student ID: 804119360
+Email: deepakar@cs.ucla.edu
+
+# Partner 2 (if you're working in a team)
+Name: Minjian Wang
+Student ID: 803775245
+Email: eraye1eraye1@g.ucla.edu
+
+# Extra credit problems
+#Extra credit problem: none
+
+# Add any other information you'd like us to know below this line.
+
+Function change_size() --> Most validations, and extensive checks and error handling are performed in helper functions add_block() and remove_block();
+
+Function ospfs_follow_link() --> The function current_euid() is valid in shell, but not in qemu shell. Use of corresponding variables has the reverse issue. hence consinued to use the funtion, which may give out an error on the qemu shell at times. 

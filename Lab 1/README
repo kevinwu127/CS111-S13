@@ -1,0 +1,50 @@
+This is a skeleton for CS 111 Lab 1.
+
+Replace this README file with notes on your implementation.
+Mentions any special features or limitations.
+
+Minjian Wang:  803775245
+Deepak Ananth Rama: 804119360
+
+Design Schema:
+       	So basically right now we're taking a command stream from the input buffer and turning those into a command_stream_t, which is a pointer to a linked list of commands.  We're turning the input into an actual structure to work with.  
+
+       	Step 1)  Taking the input and parsing it into a char* buffer.
+       		Progress:  Done.
+       		Function: read_filestream() read_command.c
+       		Notes: Tested and working fine in all cases.
+
+        Step 2)  Take the char* buffer and turn it into tokens.
+       		Progress:  Done.
+       		Function: tokenize() of read_command.c
+		Notes: Tested and working fine for all cases. Comments are ignored, multiple newlines are compressed into one and simple commands are identified as word tokens.
+		
+       	Step 3)  Validate these tokens and deal with the side cases.
+       		Progress:  Done.
+		Function: validate_tokens() of read_command.c
+		Notes: Tested and working fine in all cases. Special cases such as in where newlines can appear, checking that ( and ) appear in pairs, combining multiline commmands into single line are done here. Also, existance of input and output files for redirection operators is checked and this results in warnings if files dont exist.
+ 
+       	Step 4)  Take the token stream and turn them into a command stream.
+       		Progress: Done.
+		Function: token_to_command_stream() of read_command.c
+		Notes: Tested and working fine in all cases.
+
+	Step 5) Execute commands
+		Progress: Done
+		Function: All in execute_command.c
+		Notes: Tested and working fine in all cases
+
+	Step 6) Timetravel shell
+		Progress: Done
+		Function: execute_time_travel() of execute_command.c called in main.c and get_next_cstream() in read_command.c
+		Notes: Logis used --> In a round robin the parent process gets the next command which is either new or waiting from the get_next_cstream() function in read_command.c called from execute_time_travel(). If new a list of its inputs and outputs are made with cs_set_io_list(). Next cs_set_dependancy() for the same to make a list of predecessor commands on which this comand depends on - if the input of this command is an output of the predecessor. Next it is checked if the process is runnable - by checking if all predecessors are in DONE status. If the command is runnable a child is forked. The child runs the command and returns. The parent stores the child's pid in the command stream and sets its status to RUNNING. Parent waits for any child whih may be comple without a hang. If any child is done, status is updated based on the pid returned by the waitpid(). Then repeat for all the remaining new or waiting processes in a circular round robin fashion. When all commands are forked as children, parent waits with a hang till all children return. 
+		Benefit: This design will build the dependancies dynamically and hence scalable to any number of processes. Also, a new command which may enter the system in the middle of the execution can easily be part of the parallel schedule as this does not require refactoring a dependancy graph each time. In this case, the dependancy is build on the fly for the new process. It mimics the operation when the commands are enteed by the users on command line in real time.
+
+----------------------------------------------------------------------
+
+Notes:
+1) Few of the commands in given sample script - script.sh are incorrect (like the second argument of diff command in third like was comented and stary | at the end). Hence it has been updated to be correct.  
+2) To make the time travel functionality clear, sleep has been added to commands in script. Operation can be traced by uncommenting the print statements in the functions in execute_command.c
+
+4/29:
+3) We realized that the previous submission might not make the best use of parallelism based on dependancies. Hence submitting an updated code. Only 1 line is modified in execution_command.c - in the memory allocation for a dependacyy list fo each command structure. All other functions and logic remain the sam.e
